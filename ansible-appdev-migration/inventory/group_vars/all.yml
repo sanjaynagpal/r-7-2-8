@@ -1,0 +1,22 @@
+---
+# Admin account Ansible logs in with (needs passwordless or -K sudo on both sets).
+# ansible_user: ansible
+
+# While true, RHEL7 hosts are part of the SSH trust mesh.
+# Set to false (or run playbooks/decommission_rhel7.yml) once RHEL7 is retired:
+# every RHEL7 key / host key / alias is then removed from the RHEL8 servers.
+rhel7_in_mesh: true
+
+# Key type for NEW keys only - existing keys are never replaced.
+# ed25519 works on both OpenSSH 7.4 (RHEL7) and 8.0 (RHEL8).
+# Use `rsa` (4096) if the RHEL8 servers run in FIPS mode.
+ssh_key_type: ed25519
+ssh_key_bits: 4096
+
+# Prefix each authorized key with from="<source IPs>" so a key is only
+# accepted from the mesh server it belongs to. Disable if traffic is NATed.
+restrict_key_source: true
+
+# Marker used for every block this project manages in authorized_keys,
+# known_hosts and ~/.ssh/config.
+managed_marker: appdev-migration

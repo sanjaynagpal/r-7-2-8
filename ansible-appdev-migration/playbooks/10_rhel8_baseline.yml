@@ -1,0 +1,6 @@
+---
+- name: Baseline | svc_appdev service account on RHEL8
+  hosts: rhel8
+  become: true
+  roles:
+    - svc_appdev

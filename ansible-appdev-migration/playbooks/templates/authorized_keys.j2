@@ -1,0 +1,9 @@
+{# Keys of every application account allowed to log in to this host.
+   Input: trust_sources = list of inventory hosts that carry a `mesh_node` fact. #}
+{% for h in trust_sources %}
+{% set n = hostvars[h].mesh_node %}
+# {{ n.user }}@{{ h }}
+{% for k in n.user_keys %}
+{% if restrict_key_source | bool and n.addrs | length > 0 %}from="{{ n.addrs | join(',') }}" {% endif %}{{ k }}
+{% endfor %}
+{% endfor %}

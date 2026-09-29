@@ -1,0 +1,15 @@
+---
+# Application service account on RHEL8.
+app_user: svc_appdev
+app_group: svc_appdev
+app_home: /home/svc_appdev
+app_shell: /bin/bash
+
+# If RHEL7 and RHEL8 share NFS storage during the migration, set these to the
+# UID/GID of `appdev` on RHEL7 so file ownership stays consistent.
+app_uid: ""
+app_gid: ""
+
+# ansible-core >= 2.17 no longer supports Python 3.6 (RHEL8 platform-python).
+# playbooks/00_bootstrap_rhel8.yml installs python3.11 from AppStream.
+ansible_python_interpreter: /usr/bin/python3.11

@@ -1,0 +1,50 @@
+#!/bin/bash
+# Runs on RHEL7 as root via `raw` (no Python required).
+# Ensures {{ app_user }} has a key pair (only creates one if NONE exists),
+# then prints user keys, host keys, names and addresses as tagged lines.
+set -eu
+DRY_RUN={{ 'yes' if ansible_check_mode else 'no' }}
+U={{ app_user | quote }}
+
+if ! getent passwd "$U" >/dev/null; then
+  echo "ERROR: user $U does not exist" >&2
+  exit 1
+fi
+H=$(getent passwd "$U" | cut -d: -f6)
+G=$(id -gn "$U")
+
+has_key=no
+for k in "$H"/.ssh/id_*.pub; do
+  if [ -f "$k" ]; then has_key=yes; fi
+done
+
+if [ "$has_key" = no ]; then
+  if [ "$DRY_RUN" = no ]; then
+    install -d -m 0700 -o "$U" -g "$G" "$H/.ssh"
+    ssh-keygen -q -t {{ ssh_key_type }} {{ ('-b ' ~ ssh_key_bits) if ssh_key_type == 'rsa' else '' }} -N '' \
+      -C "$U@$(hostname -s)" -f "$H/.ssh/id_{{ ssh_key_type }}"
+    chown "$U:$G" "$H/.ssh/id_{{ ssh_key_type }}" "$H/.ssh/id_{{ ssh_key_type }}.pub"
+    if command -v restorecon >/dev/null 2>&1; then restorecon -R "$H/.ssh"; fi
+    echo "KEYGEN=generated"
+  else
+    echo "KEYGEN=would_generate"
+  fi
+fi
+
+for k in "$H"/.ssh/id_*.pub; do
+  case "$k" in *-cert.pub) continue ;; esac
+  if [ -f "$k" ]; then echo "USERKEY $(head -n1 "$k")"; fi
+done
+
+for k in {{ ssh_host_key_dir | default('/etc/ssh') }}/ssh_host_*_key.pub; do
+  if [ -f "$k" ]; then echo "HOSTKEY $(awk '{print $1" "$2}' "$k")"; fi
+done
+
+echo "NAME $(hostname -s)"
+echo "NAME $(hostname -f 2>/dev/null || hostname)"
+for a in $(hostname -I); do
+  case "$a" in
+    *:*|127.*) ;;
+    *) echo "ADDR $a" ;;
+  esac
+done

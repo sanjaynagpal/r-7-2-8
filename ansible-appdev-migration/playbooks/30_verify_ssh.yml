@@ -1,0 +1,89 @@
+---
+# Proves the mesh end-to-end: each source logs in to each target as the
+# application account, using only the alias (no user@), with BatchMode and
+# strict host key checking. The remote runs `id -un`, so the check also proves
+# the user mapping (appdev -> svc_appdev and back) works.
+
+- name: Verify | RHEL8 svc_appdev -> mesh
+  hosts: rhel8
+  gather_facts: false
+  become: true
+  become_user: "{{ app_user }}"
+  vars:
+    mesh_hosts: "{{ groups['rhel8'] + (groups.get('rhel7', []) if rhel7_in_mesh | bool else []) }}"
+  tasks:
+    - name: SSH to every mesh host
+      ansible.builtin.command:
+        argv: [ssh, -o, BatchMode=yes, -o, StrictHostKeyChecking=yes, -o, ConnectTimeout=10, "{{ item }}", id, -un]
+      loop: "{{ mesh_hosts }}"
+      register: _v
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Record results
+      ansible.builtin.set_fact:
+        ssh_check: >-
+          {{ ssh_check | default({}) | combine({item.item:
+               'OK' if (item.rc == 0 and item.stdout | trim == hostvars[item.item].app_user)
+               else 'FAIL: ' ~ ((item.stderr | default('')) ~ ' ' ~ (item.stdout | default(''))) | trim | truncate(120)}) }}
+      loop: "{{ _v.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+- name: Verify | RHEL7 appdev -> RHEL8
+  hosts: rhel7
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Skip RHEL7 once it has left the mesh
+      ansible.builtin.meta: end_play
+      when: not rhel7_in_mesh | bool
+
+    - name: SSH to every RHEL8 host as appdev (raw)
+      ansible.builtin.raw: >-
+        su - {{ app_user }} -c
+        "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 {{ item }} id -un"
+      loop: "{{ groups['rhel8'] }}"
+      register: _v
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Record results
+      ansible.builtin.set_fact:
+        ssh_check: >-
+          {{ ssh_check | default({}) | combine({item.item:
+               'OK' if (item.rc == 0 and hostvars[item.item].app_user in item.stdout_lines | map('trim') | list)
+               else 'FAIL: rc=' ~ item.rc ~ ' ' ~ ((item.stdout | default('')) ~ ' ' ~ (item.stderr | default(''))) | trim | truncate(120)}) }}
+      loop: "{{ _v.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+- name: Verify | Report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    sources: "{{ groups['rhel8'] + (groups.get('rhel7', []) if rhel7_in_mesh | bool else []) }}"
+  tasks:
+    - name: Build connectivity matrix
+      ansible.builtin.set_fact:
+        report: >-
+          {%- set out = [] -%}
+          {%- for s in sources -%}
+            {%- set res = hostvars[s].ssh_check | default({'(all)': 'FAIL: no result - host unreachable?'}) -%}
+            {%- for t in res | sort -%}
+              {%- set _ = out.append(s ~ ' (' ~ hostvars[s].app_user ~ ') -> ' ~ t ~ ': ' ~ res[t]) -%}
+            {%- endfor -%}
+          {%- endfor -%}
+          {{ out }}
+
+    - name: Show matrix
+      ansible.builtin.debug:
+        var: report
+
+    - name: Every path must succeed
+      ansible.builtin.assert:
+        that: "report | select('search', ': FAIL') | list | length == 0"
+        fail_msg: "{{ report | select('search', ': FAIL') | list }}"
+        success_msg: "All {{ report | length }} SSH paths OK"

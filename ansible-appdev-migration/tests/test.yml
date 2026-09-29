@@ -1,0 +1,13 @@
+- import_playbook: ../playbooks/20_ssh_trust.yml
+- name: Render RHEL8 blocks (with RHEL7 hosts in mesh)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    mesh_hosts: "{{ groups['rhel8'] + (groups.get('rhel7', []) if rhel7_in_mesh | bool else []) }}"
+    trust_sources: "{{ mesh_hosts }}"
+    trust_targets: "{{ mesh_hosts }}"
+  tasks:
+    - ansible.builtin.copy:
+        dest: "{{ lookup('env','FAKEHOME') }}/rhel8_{{ item }}"
+        content: "{{ lookup('ansible.builtin.template', '../playbooks/templates/' ~ item ~ '.j2') }}"
+      loop: [authorized_keys, known_hosts, ssh_config]

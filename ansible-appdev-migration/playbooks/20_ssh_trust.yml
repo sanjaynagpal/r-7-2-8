@@ -1,0 +1,181 @@
+---
+# Builds the SSH trust mesh:
+#   RHEL8 svc_appdev -> every RHEL8 host  (svc_appdev)
+#   RHEL8 svc_appdev -> every RHEL7 host  (appdev)       while rhel7_in_mesh
+#   RHEL7 appdev     -> every RHEL8 host  (svc_appdev)   while rhel7_in_mesh
+# Existing RHEL7 <-> RHEL7 trust is left exactly as it is.
+#
+# Phase 1 collects keys from every host, phase 2 writes managed blocks.
+# any_errors_fatal: a partial mesh is worse than no change.
+
+# ---------------------------------------------------------------- collect ---
+- name: Collect | RHEL8 service account keys, host keys and addresses
+  hosts: rhel8
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Confirm service account exists (run 10_rhel8_baseline.yml first)
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ app_user }}"
+
+    - name: Ensure service account has a key pair (never overwrites an existing key)
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        generate_ssh_key: true
+        ssh_key_type: "{{ ssh_key_type }}"
+        ssh_key_bits: "{{ ssh_key_bits if ssh_key_type == 'rsa' else omit }}"
+        ssh_key_file: ".ssh/id_{{ ssh_key_type }}"
+        ssh_key_comment: "{{ app_user }}@{{ ansible_hostname }}"
+
+    - name: Find service account public keys
+      ansible.builtin.find:
+        paths: "{{ app_home }}/.ssh"
+        patterns: "id_*.pub"
+        excludes: "*-cert.pub"
+      register: _user_pub
+
+    - name: Find host public keys
+      ansible.builtin.find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*_key.pub"
+      register: _host_pub
+
+    - name: Read public keys
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: "{{ (_user_pub.files + _host_pub.files) | map(attribute='path') | list }}"
+      register: _pub
+
+    - name: Record mesh node data
+      ansible.builtin.set_fact:
+        mesh_node:
+          user: "{{ app_user }}"
+          connect: "{{ mesh_address | default(ansible_host) | default(inventory_hostname) }}"
+          user_keys: "{{ _user_keys }}"
+          host_keys: "{{ _host_keys }}"
+          names: "{{ [ansible_hostname, ansible_fqdn, ansible_nodename] | reject('match', '^localhost') | unique | list }}"
+          addrs: "{{ (ansible_all_ipv4_addresses + (mesh_extra_addrs | default([]))) | unique | list }}"
+      vars:
+        _user_keys: >-
+          {{ _pub.results | selectattr('item', 'search', '/id_[^/]*[.]pub$')
+             | map(attribute='content') | map('b64decode') | map('trim') | list }}
+        _host_keys: >-
+          {{ _pub.results | selectattr('item', 'search', '/ssh_host_[^/]*[.]pub$')
+             | map(attribute='content') | map('b64decode')
+             | map('regex_replace', '^(\\S+\\s+\\S+).*$', '\\1') | map('trim') | list }}
+
+    - name: Sanity check collected data
+      ansible.builtin.assert:
+        that:
+          - mesh_node.user_keys | length > 0 or ansible_check_mode
+          - mesh_node.host_keys | length > 0
+        quiet: true
+
+# RHEL7 is being retired: touch it with `raw` only (no Python, no packages).
+- name: Collect | RHEL7 appdev keys, host keys and addresses
+  hosts: rhel7
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  tasks:
+    - name: Skip RHEL7 once it has left the mesh
+      ansible.builtin.meta: end_play
+      when: not rhel7_in_mesh | bool
+
+    - name: Ensure appdev has a key pair and report keys (raw)
+      ansible.builtin.raw: "echo {{ lookup('ansible.builtin.template', 'rhel7_collect.sh.j2') | b64encode }} | base64 -d | /bin/bash"
+      register: _r7
+      check_mode: false          # the script honours check mode itself
+      changed_when: "'KEYGEN=generated' in _r7.stdout"
+
+    # raw runs with a TTY, so lines end in \r - hence the trim.
+    - name: Record mesh node data
+      ansible.builtin.set_fact:
+        mesh_node:
+          user: "{{ app_user }}"
+          connect: "{{ mesh_address | default(ansible_host) | default(inventory_hostname) }}"
+          user_keys: "{{ _lines | select('match', '^USERKEY ') | map('regex_replace', '^USERKEY ', '') | list }}"
+          host_keys: "{{ _lines | select('match', '^HOSTKEY ') | map('regex_replace', '^HOSTKEY ', '') | reject('match', '^ssh-dss ') | list }}"
+          names: "{{ _lines | select('match', '^NAME ') | map('regex_replace', '^NAME ', '') | reject('match', '^localhost') | unique | list }}"
+          addrs: "{{ (_lines | select('match', '^ADDR ') | map('regex_replace', '^ADDR ', '') | list + (mesh_extra_addrs | default([]))) | unique | list }}"
+      vars:
+        _lines: "{{ _r7.stdout_lines | map('trim') | list }}"
+
+    - name: Warn about keys RHEL8 (OpenSSH 8, DEFAULT crypto policy) will reject
+      ansible.builtin.debug:
+        msg: "appdev on {{ inventory_hostname }} has a DSA key - RHEL8 refuses ssh-dss; an ed25519 key is needed."
+      when: mesh_node.user_keys | select('match', '^ssh-dss ') | list | length > 0
+
+    - name: Sanity check collected data
+      ansible.builtin.assert:
+        that:
+          - mesh_node.user_keys | length > 0 or ansible_check_mode
+          - mesh_node.host_keys | length > 0
+        quiet: true
+
+# ------------------------------------------------------------------ apply ---
+- name: Apply | RHEL8 authorized_keys, known_hosts and ssh client config
+  hosts: rhel8
+  become: true
+  any_errors_fatal: true
+  vars:
+    mesh_hosts: "{{ groups['rhel8'] + (groups.get('rhel7', []) if rhel7_in_mesh | bool else []) }}"
+    trust_sources: "{{ mesh_hosts }}"
+    trust_targets: "{{ mesh_hosts }}"
+    _marker: "# {mark} ANSIBLE MANAGED: {{ managed_marker }}"
+  tasks:
+    - name: Authorize mesh keys for the service account
+      ansible.builtin.blockinfile:
+        path: "{{ app_home }}/.ssh/authorized_keys"
+        block: "{{ lookup('ansible.builtin.template', 'authorized_keys.j2') }}"
+        marker: "{{ _marker }}"
+        create: true
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+
+    - name: Publish mesh host keys system-wide
+      ansible.builtin.blockinfile:
+        path: /etc/ssh/ssh_known_hosts
+        block: "{{ lookup('ansible.builtin.template', 'known_hosts.j2') }}"
+        marker: "{{ _marker }}"
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Map mesh hosts to the right remote user
+      ansible.builtin.blockinfile:
+        path: "{{ app_home }}/.ssh/config"
+        block: "{{ lookup('ansible.builtin.template', 'ssh_config.j2') }}"
+        marker: "{{ _marker }}"
+        insertbefore: BOF
+        create: true
+        owner: "{{ app_user }}"
+        group: "{{ app_group }}"
+        mode: "0600"
+
+- name: Apply | RHEL7 appdev authorized_keys, known_hosts and ssh client config
+  hosts: rhel7
+  gather_facts: false
+  become: true
+  any_errors_fatal: true
+  vars:
+    # RHEL7 only needs to trust / reach RHEL8; its existing RHEL7 trust is untouched.
+    trust_sources: "{{ groups['rhel8'] }}"
+    trust_targets: "{{ groups['rhel8'] }}"
+  tasks:
+    - name: Skip RHEL7 once it has left the mesh
+      ansible.builtin.meta: end_play
+      when: not rhel7_in_mesh | bool
+
+    - name: Write managed blocks for appdev (raw)
+      ansible.builtin.raw: "echo {{ lookup('ansible.builtin.template', 'rhel7_apply.sh.j2') | b64encode }} | base64 -d | /bin/bash"
+      vars:
+        block_authorized_keys: "{{ lookup('ansible.builtin.template', 'authorized_keys.j2') }}"
+        block_known_hosts: "{{ lookup('ansible.builtin.template', 'known_hosts.j2') }}"
+        block_ssh_config: "{{ lookup('ansible.builtin.template', 'ssh_config.j2') }}"
+      register: _r7_apply
+      check_mode: false          # the script honours check mode itself
+      changed_when: "'RESULT=changed' in _r7_apply.stdout"

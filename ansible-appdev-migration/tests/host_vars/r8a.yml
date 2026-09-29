@@ -1,0 +1,7 @@
+mesh_node:
+  user: svc_appdev
+  connect: 10.10.8.11
+  user_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEr8akey svc_appdev@r8a"]
+  host_keys: ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHOSTr8a", "ecdsa-sha2-nistp256 AAAAE2VjZHNhHOSTr8a"]
+  names: [rhel8-app0a, rhel8-app0a.example.com]
+  addrs: [10.10.8.11]

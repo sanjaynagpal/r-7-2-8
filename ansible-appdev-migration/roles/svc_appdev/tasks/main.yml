@@ -1,0 +1,102 @@
+---
+- name: Ensure application group exists
+  ansible.builtin.group:
+    name: "{{ app_group }}"
+    gid: "{{ app_gid | default(omit, true) }}"
+    state: present
+
+- name: Ensure application service account exists
+  ansible.builtin.user:
+    name: "{{ app_user }}"
+    uid: "{{ app_uid | default(omit, true) }}"
+    group: "{{ app_group }}"
+    groups: "{{ app_extra_groups | default(omit, true) }}"
+    append: true
+    home: "{{ app_home }}"
+    shell: "{{ app_shell }}"
+    comment: "{{ app_comment }}"
+    create_home: true
+    state: present
+
+- name: Ensure home directory permissions satisfy sshd StrictModes
+  ansible.builtin.file:
+    path: "{{ app_home }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "{{ app_home_mode }}"
+
+- name: Ensure ~/.ssh exists
+  ansible.builtin.file:
+    path: "{{ app_home }}/.ssh"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "0700"
+
+- name: Ensure application directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(app_user) }}"
+    group: "{{ item.group | default(app_group) }}"
+    mode: "{{ item.mode | default('0750') }}"
+  loop: "{{ app_directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Legacy home path compatibility
+  when: app_legacy_home_symlink | bool
+  block:
+    - name: Check legacy home path
+      ansible.builtin.stat:
+        path: "{{ app_legacy_home }}"
+      register: _legacy_home
+
+    - name: Link legacy home path to the new home
+      ansible.builtin.file:
+        src: "{{ app_home }}"
+        dest: "{{ app_legacy_home }}"
+        state: link
+      when: not _legacy_home.stat.exists or _legacy_home.stat.islnk
+
+- name: Read effective sshd configuration
+  ansible.builtin.command: sshd -T
+  register: _sshd
+  changed_when: false
+  check_mode: false
+
+- name: Verify sshd will accept key logins for the service account
+  ansible.builtin.assert:
+    that:
+      - "'pubkeyauthentication yes' in _sshd.stdout_lines"
+      - _allowusers | length == 0 or (_allowusers | select('match', '^' ~ app_user ~ '(@|$)') | list | length > 0)
+    fail_msg: >-
+      sshd on {{ inventory_hostname }} would refuse {{ app_user }}:
+      PubkeyAuthentication must be yes and, if AllowUsers is set, it must list {{ app_user }}.
+    quiet: true
+  vars:
+    _allowusers: "{{ _sshd.stdout_lines | select('match', '^allowusers ') | map('regex_replace', '^allowusers ', '') | list }}"
+
+- name: Warn when AllowGroups is in use
+  ansible.builtin.debug:
+    msg: "sshd uses AllowGroups - make sure {{ app_user }} is in one of: {{ _allowgroups | join(', ') }}"
+  when: _allowgroups | length > 0
+  vars:
+    _allowgroups: "{{ _sshd.stdout_lines | select('match', '^allowgroups ') | map('regex_replace', '^allowgroups ', '') | list }}"
+
+- name: Firewall
+  when: app_manage_firewall | bool
+  block:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Allow SSH through firewalld
+      ansible.posix.firewalld:
+        service: ssh
+        state: enabled
+        permanent: true
+        immediate: true
+      when:
+        - "'firewalld.service' in ansible_facts.services"
+        - ansible_facts.services['firewalld.service'].state == 'running'

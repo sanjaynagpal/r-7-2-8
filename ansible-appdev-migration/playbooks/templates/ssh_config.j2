@@ -1,0 +1,13 @@
+{# Maps every mesh host (name, FQDN, IP) to the right remote account, so
+   `ssh rhel8-app01` from appdev logs in as svc_appdev and vice versa -
+   application scripts do not need to know the user name changed.
+   Input: trust_targets. This block is placed at the TOP of ~/.ssh/config
+   because ssh uses the first value it finds for each option. #}
+{% for h in trust_targets %}
+{% set n = hostvars[h].mesh_node %}
+Host {{ ([h, n.connect] + n.names + n.addrs) | unique | join(' ') }}
+    HostName {{ n.connect }}
+    User {{ n.user }}
+    BatchMode yes
+    StrictHostKeyChecking yes
+{% endfor %}

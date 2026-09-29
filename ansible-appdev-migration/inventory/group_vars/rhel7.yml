@@ -1,0 +1,6 @@
+---
+# Legacy application account on RHEL7.
+app_user: appdev
+
+# RHEL7 is reached only with the `raw` module (no Python needed on the target),
+# so these hosts work with any ansible-core version on the controller.

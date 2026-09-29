@@ -1,0 +1,12 @@
+---
+# ansible-core >= 2.17 cannot use RHEL8's platform-python (3.6).
+# Install python3.11 from AppStream with `raw` so normal modules work afterwards.
+- name: Bootstrap | Python for Ansible on RHEL8
+  hosts: rhel8
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install python3.11 if missing
+      ansible.builtin.raw: test -x /usr/bin/python3.11 && echo PRESENT || dnf -y -q install python3.11
+      register: _py
+      changed_when: "'PRESENT' not in _py.stdout"

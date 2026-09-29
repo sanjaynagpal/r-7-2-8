@@ -1,0 +1,5 @@
+---
+- import_playbook: 00_bootstrap_rhel8.yml
+- import_playbook: 10_rhel8_baseline.yml
+- import_playbook: 20_ssh_trust.yml
+- import_playbook: 30_verify_ssh.yml

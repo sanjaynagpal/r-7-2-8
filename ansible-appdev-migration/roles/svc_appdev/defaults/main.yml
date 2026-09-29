@@ -1,0 +1,22 @@
+---
+app_user: svc_appdev
+app_group: svc_appdev
+app_uid: ""                 # empty = let the system choose
+app_gid: ""
+app_home: /home/svc_appdev
+app_home_mode: "0700"       # sshd StrictModes rejects group/world-writable homes
+app_shell: /bin/bash        # must be a real shell, not nologin, for SSH sessions
+app_comment: "Application service account"
+app_extra_groups: []
+
+# Application directories to create, e.g.
+#   - { path: /opt/app,     mode: "0750" }
+#   - { path: /var/log/app, mode: "0750" }
+app_directories: []
+
+# Create /home/appdev -> {{ app_home }} for scripts that hardcode the old home path.
+app_legacy_home_symlink: false
+app_legacy_home: /home/appdev
+
+# Open SSH in firewalld when firewalld is running.
+app_manage_firewall: true

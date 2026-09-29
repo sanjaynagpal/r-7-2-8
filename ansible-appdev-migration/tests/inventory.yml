@@ -1,0 +1,10 @@
+all:
+  children:
+    rhel7:
+      hosts:
+        r7a: { ansible_connection: local, app_user: sanja, mesh_address: 10.10.7.11 }
+        r7b: { ansible_connection: local, app_user: sanja, mesh_address: 10.10.7.12 }
+    rhel8:
+      hosts:
+        r8a: { ansible_connection: local }
+        r8b: { ansible_connection: local }

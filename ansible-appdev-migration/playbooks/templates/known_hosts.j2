@@ -1,0 +1,8 @@
+{# Host keys of every server this host may connect to, under all its names/IPs.
+   Input: trust_targets = list of inventory hosts that carry a `mesh_node` fact. #}
+{% for h in trust_targets %}
+{% set n = hostvars[h].mesh_node %}
+{% for k in n.host_keys %}
+{{ ([h, n.connect] + n.names + n.addrs) | unique | join(',') }} {{ k }}
+{% endfor %}
+{% endfor %}

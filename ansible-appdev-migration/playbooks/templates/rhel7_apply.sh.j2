@@ -1,0 +1,62 @@
+#!/bin/bash
+# Runs on RHEL7 as root via `raw` (no Python required).
+# Writes one Ansible-managed block into each of {{ app_user }}'s
+#   ~/.ssh/authorized_keys, ~/.ssh/known_hosts and ~/.ssh/config
+# leaving every line outside the block untouched. Idempotent: prints
+# RESULT=changed only when a file's content actually changes.
+set -eu
+DRY_RUN={{ 'yes' if ansible_check_mode else 'no' }}
+U={{ app_user | quote }}
+
+if ! getent passwd "$U" >/dev/null; then
+  echo "ERROR: user $U does not exist" >&2
+  exit 1
+fi
+H=$(getent passwd "$U" | cut -d: -f6)
+G=$(id -gn "$U")
+BEGIN='# BEGIN ANSIBLE MANAGED: {{ managed_marker }}'
+END='# END ANSIBLE MANAGED: {{ managed_marker }}'
+CHANGED=0
+
+# put_block <file> <top|bottom> <base64 block content>
+put_block() {
+  f=$1; pos=$2; b64=$3
+  body=$(mktemp); out=$(mktemp)
+  if [ -f "$f" ]; then
+    awk -v b="$BEGIN" -v e="$END" '$0==b{s=1;next} $0==e{s=0;next} !s' "$f" > "$body"
+  fi
+  {
+    if [ "$pos" = bottom ]; then cat "$body"; fi
+    printf '%s\n' "$BEGIN"
+    printf '%s\n' "$(printf '%s' "$b64" | base64 -d)"
+    printf '%s\n' "$END"
+    if [ "$pos" = top ]; then cat "$body"; fi
+  } > "$out"
+
+  if [ -f "$f" ] && cmp -s "$out" "$f"; then
+    :
+  else
+    CHANGED=1
+    echo "UPDATE $f"
+    if [ "$DRY_RUN" = no ]; then cat "$out" > "$f"; fi
+  fi
+  if [ "$DRY_RUN" = no ]; then
+    chown "$U:$G" "$f"
+    chmod 0600 "$f"
+  fi
+  rm -f "$body" "$out"
+}
+
+if [ "$DRY_RUN" = no ]; then
+  install -d -m 0700 -o "$U" -g "$G" "$H/.ssh"
+fi
+
+put_block "$H/.ssh/authorized_keys" bottom '{{ block_authorized_keys | b64encode }}'
+put_block "$H/.ssh/known_hosts"     bottom '{{ block_known_hosts | b64encode }}'
+put_block "$H/.ssh/config"          top    '{{ block_ssh_config | b64encode }}'
+
+if [ "$DRY_RUN" = no ] && command -v restorecon >/dev/null 2>&1; then
+  restorecon -R "$H/.ssh"
+fi
+
+if [ "$CHANGED" = 1 ]; then echo "RESULT=changed"; else echo "RESULT=unchanged"; fi

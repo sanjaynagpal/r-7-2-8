@@ -1,0 +1,17 @@
+---
+# Run AFTER the last application process has left RHEL7.
+# Re-renders every managed block on RHEL8 without the RHEL7 hosts, which
+# removes their appdev keys from svc_appdev's authorized_keys, their host keys
+# from /etc/ssh/ssh_known_hosts and their aliases from ~/.ssh/config.
+# RHEL7 hosts are not contacted, so this works when they are already powered off.
+#
+# Afterwards set `rhel7_in_mesh: false` in group_vars/all.yml (or delete the
+# rhel7 group from the inventory) so later runs of site.yml keep it that way.
+
+- import_playbook: 20_ssh_trust.yml
+  vars:
+    rhel7_in_mesh: false
+
+- import_playbook: 30_verify_ssh.yml
+  vars:
+    rhel7_in_mesh: false

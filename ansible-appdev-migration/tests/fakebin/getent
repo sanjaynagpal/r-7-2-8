@@ -1,0 +1,4 @@
+#!/bin/sh
+# test double: redirect the app user's home into a sandbox
+[ "$1" = passwd ] && echo "$2:x:1000:1000::$FAKEHOME:/bin/bash" && exit 0
+exec /usr/bin/getent "$@"
