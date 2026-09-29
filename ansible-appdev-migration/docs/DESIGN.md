@@ -218,7 +218,52 @@ Per-host `mesh_address` in `inventory/hosts.yml` overrides the address other
 mesh hosts use to reach that specific host (e.g. a private/NAT address
 different from `ansible_host`).
 
-### 3.6 Testing
+### 3.6 `~/.ssh/config`: general purpose and how this project uses it
+
+`~/.ssh/config` is the OpenSSH client's own per-user config file. It maps an
+alias to a full connection recipe — `HostName` (real address), `User`,
+`IdentityFile`, and behaviour flags like `StrictHostKeyChecking` — so
+`ssh <alias>` expands to the right connection without the caller spelling
+out every option. It is read top to bottom, and for any given option SSH
+keeps the **first** matching value it finds; a later, more general block
+(e.g. a trailing `Host *`) never overrides one set earlier.
+
+That read-order rule is what this project's username trick depends on.
+[`templates/ssh_config.j2`](../playbooks/templates/ssh_config.j2) renders
+one `Host` block per mesh host, listing every alias that host is known by
+(short name, FQDN, inventory name, IP) and pointing all of them at the
+*correct* `User` for that platform:
+
+```jinja
+Host {{ ([h, n.connect] + n.names + n.addrs) | unique | join(' ') }}
+    HostName {{ n.connect }}
+    User {{ n.user }}
+    BatchMode yes
+    StrictHostKeyChecking yes
+```
+
+The block rendered against `rhel8-app01`'s `mesh_node` sets `User
+svc_appdev`; the block rendered against `rhel7-app01`'s sets `User appdev`.
+A script never names a user at all — it just runs `ssh rhel8-app01 ...` —
+so SSH itself supplies whichever account is correct for the platform it's
+running on.
+
+Two implementation choices make this hold up:
+
+- **Inserted at the top, not appended.** The `blockinfile` task in
+  `20_ssh_trust.yml` uses `insertbefore: BOF` on RHEL8; `rhel7_apply.sh.j2`'s
+  `put_block` does the same with its `top` mode (§3.3). Because SSH takes the
+  *first* match, nothing added later in the file — by hand or by another tool
+  — can silently override the mapping.
+- **A managed block, not the whole file.** Only the marked region is ever
+  rewritten (§2.4), so any `Host` entries an admin added themselves stay
+  exactly where they are, below the managed block.
+
+`known_hosts`/`ssh_known_hosts` are maintained the same way from the same
+`mesh_node` data (`templates/known_hosts.j2`), which is what lets every
+block also set `StrictHostKeyChecking yes` (§2.6) without ever prompting.
+
+### 3.7 Testing
 
 There is no CI in this repository; `tests/run.sh` and `tests/edge.sh` are the
 only test entry points (Linux/WSL + ansible-core + `ansible.posix` required).
