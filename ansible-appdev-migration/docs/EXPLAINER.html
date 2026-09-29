@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSH Trust Mesh</title>
+<style>
+  :root {
+    --bg: #F5F5F1;
+    --surface: #FFFFFF;
+    --surface-2: #EDECE5;
+    --border: #DBD8CE;
+    --text: #1C1E1B;
+    --text-muted: #66655D;
+    --accent: #2F5E86;
+    --accent-soft: #E2EAF1;
+    --ok: #2E7A4F;
+    --ok-soft: #E4F0E8;
+    --fail: #B23B3B;
+    --fail-soft: #F5E6E4;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171A;
+      --surface: #1B1F23;
+      --surface-2: #20252A;
+      --border: #2B3238;
+      --text: #E7E6E1;
+      --text-muted: #9B9C97;
+      --accent: #86BAE8;
+      --accent-soft: #1F2E3C;
+      --ok: #5FBB86;
+      --ok-soft: #1C2C22;
+      --fail: #E2867F;
+      --fail-soft: #2E211F;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171A;
+    --surface: #1B1F23;
+    --surface-2: #20252A;
+    --border: #2B3238;
+    --text: #E7E6E1;
+    --text-muted: #9B9C97;
+    --accent: #86BAE8;
+    --accent-soft: #1F2E3C;
+    --ok: #5FBB86;
+    --ok-soft: #1C2C22;
+    --fail: #E2867F;
+    --fail-soft: #2E211F;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    line-height: 1.6;
+    font-size: 16.5px;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 20px 100px;
+  }
+  .wide {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  h1, h2, h3 {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-weight: 600;
+    line-height: 1.25;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); margin: 0 0 14px; }
+  h2 { font-size: 1.3rem; margin: 0 0 6px; }
+  p { margin: 0 0 16px; max-width: 66ch; }
+  code {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    font-size: 0.9em;
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+  }
+  .eyebrow::before { content: "# "; opacity: 0.6; }
+
+  header.hero {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 36px;
+    margin-bottom: 40px;
+  }
+  .kicker {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  .hero p.lede {
+    font-size: 1.08rem;
+    color: var(--text-muted);
+    max-width: 62ch;
+  }
+
+  section { margin: 52px 0; }
+  section:first-of-type { margin-top: 0; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 28px 0 0;
+  }
+  .stat {
+    background: var(--surface);
+    padding: 16px 14px;
+  }
+  .stat .n {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .l {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  figure {
+    margin: 28px 0 0;
+    padding: 0;
+  }
+  .diagram-frame {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 18px 14px;
+  }
+  .diagram-scroll {
+    overflow-x: auto;
+  }
+  .diagram-scroll svg {
+    display: block;
+    height: auto;
+  }
+  figcaption {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+    max-width: 66ch;
+    line-height: 1.5;
+  }
+  .fignum {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  dl.glossary {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 10px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+    margin-top: 20px;
+  }
+  dl.glossary dt {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.88rem;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  dl.glossary dd {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-muted);
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .card .t {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.86rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .card .d {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 0.92rem;
+    margin-top: 20px;
+  }
+  .callout strong { color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    margin-top: 60px;
+    padding-top: 24px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  footer code { font-size: 0.85em; }
+
+  @media (max-width: 620px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .cards { grid-template-columns: 1fr; }
+    dl.glossary { grid-template-columns: 1fr; }
+    dl.glossary dt { margin-top: 6px; }
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="hero">
+    <p class="kicker">Internal explainer — appdev → svc_appdev migration</p>
+    <h1>SSH trust mesh</h1>
+    <p class="lede">
+      The application is moving from four old servers to four new ones, and the
+      account it runs as is changing name. This is how we make that invisible
+      to every script that connects between them, using Ansible — explained
+      assuming you've never used Ansible before.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="n">8</div><div class="l">hosts total</div></div>
+      <div class="stat"><div class="n">2</div><div class="l">account names</div></div>
+      <div class="stat"><div class="n">48</div><div class="l">SSH paths verified</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">config block per host</div></div>
+    </div>
+  </header>
+
+  <section>
+    <p class="eyebrow">1 — the problem</p>
+    <h2>One script, two account names</h2>
+    <p>
+      Today the application runs as <code>appdev</code> on four RHEL7 servers.
+      It's moving to four new RHEL8 servers, where — for tighter permissions —
+      it will run as a different account, <code>svc_appdev</code>. During the
+      migration both sets of servers are live at once, and the application's
+      own scripts SSH between them: a batch job on one box reaches over to
+      stage a file or kick off work on another.
+    </p>
+    <p>
+      Those scripts just say things like <code>ssh rhel8-app01 ./collect.sh</code>.
+      They don't know or care which account they're running as — they assume
+      it's whatever it always was. The moment the remote account's name
+      changes, that assumption breaks, and fixing it by teaching every script
+      about two possible usernames would mean editing application code we'd
+      rather not touch at all.
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">2 — what ansible actually is</p>
+    <h2>A tool that runs the same steps on many machines over SSH</h2>
+    <p>
+      Ansible isn't installed on the servers it manages. From one controller
+      — your laptop, or a jump box — it connects out over ordinary SSH and
+      runs a set of instructions, called a <strong>playbook</strong>, against
+      as many hosts as you point it at. Run it again and it only changes what's
+      actually different from what you asked for; a host that's already
+      correct is left alone. That's what "idempotent" means below.
+    </p>
+
+    <figure>
+      <div class="fignum">FIG. 1</div>
+      <div class="diagram-frame">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 660 210" style="width:100%;min-width:520px" role="img"
+               aria-label="One controller connects over SSH to eight target hosts and runs the same playbook on each.">
+            <defs>
+              <marker id="f1a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+            <rect x="24" y="76" width="168" height="56" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.6"/>
+            <text x="108" y="99" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" fill="currentColor">Controller</text>
+            <text x="108" y="115" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9.5" fill="currentColor" opacity="0.65">ansible-playbook site.yml</text>
+
+            <line x1="192" y1="90" x2="452" y2="30" stroke="currentColor" marker-end="url(#f1a)"/>
+            <line x1="192" y1="104" x2="452" y2="98" stroke="currentColor" marker-end="url(#f1a)"/>
+            <line x1="192" y1="118" x2="452" y2="166" stroke="currentColor" marker-end="url(#f1a)"/>
+
+            <text x="300" y="52" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" fill="currentColor" opacity="0.6">plain SSH, no agent to install</text>
+
+            <rect x="456" y="12" width="180" height="36" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.6"/>
+            <text x="546" y="35" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor">rhel8-app01</text>
+
+            <rect x="456" y="80" width="180" height="36" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.6"/>
+            <text x="546" y="103" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor">rhel7-app01</text>
+
+            <rect x="456" y="148" width="180" height="36" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.6"/>
+            <text x="546" y="171" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor">rhel8-app02</text>
+
+            <text x="546" y="200" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" fill="currentColor" opacity="0.55">+ 5 more hosts, same run</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>Every host gets exactly the same instructions in the same run. Nothing has to be pre-installed on a target beyond SSH access itself.</figcaption>
+    </figure>
+
+    <dl class="glossary">
+      <dt>playbook</dt><dd>a file listing the steps to run, in order — the thing you hand to Ansible</dd>
+      <dt>role / task</dt><dd>a task is one step ("create this user"); a role bundles related tasks together and can be reused</dd>
+      <dt>module</dt><dd>the actual code behind a task, e.g. "create a user" or "edit this block of a file" — needs Python on the target</dd>
+      <dt>raw</dt><dd>a fallback that runs a plain shell command instead of a module — no Python required</dd>
+      <dt>idempotent</dt><dd>running it twice gives the same end state; the second run changes nothing if the first one already succeeded</dd>
+    </dl>
+  </section>
+
+  <section>
+    <p class="eyebrow">3 — the trick</p>
+    <h2>Let SSH rewrite the username, not the script</h2>
+    <p>
+      SSH has its own address book: <code>~/.ssh/config</code>. It lets an
+      account say "whenever I connect to this alias, actually log in as this
+      user." This project generates and maintains that address book
+      automatically, for every account, listing every host in the mesh — so a
+      script that just says <code>ssh rhel8-app01</code> keeps working no
+      matter which platform runs it or which platform it's reaching.
+    </p>
+
+    <figure>
+      <div class="fignum">FIG. 2</div>
+      <div class="diagram-frame">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 720 300" style="width:100%;min-width:600px" role="img"
+               aria-label="Without the managed SSH config block, ssh rhel8-app01 from the appdev account tries to log in as appdev and is refused. With the block in place, SSH rewrites the destination account to svc_appdev before connecting and the login succeeds.">
+            <defs>
+              <marker id="f2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <text x="170" y="18" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" letter-spacing="0.03em" fill="currentColor" opacity="0.6">WITHOUT THE MANAGED CONFIG</text>
+            <text x="550" y="18" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" letter-spacing="0.03em" fill="currentColor" opacity="0.6">WITH THE MANAGED CONFIG</text>
+            <line x1="360" y1="10" x2="360" y2="278" stroke="currentColor" stroke-opacity="0.2" stroke-dasharray="3 5"/>
+
+            <!-- LEFT -->
+            <rect x="60" y="34" width="220" height="46" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="170" y="53" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="12" fill="currentColor">RHEL7 script, as appdev</text>
+            <text x="170" y="69" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor" opacity="0.65">ssh rhel8-app01</text>
+
+            <line x1="170" y1="80" x2="170" y2="110" stroke="currentColor" marker-end="url(#f2a)"/>
+
+            <rect x="60" y="110" width="220" height="38" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="170" y="133" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor">rhel8-app01 sshd</text>
+
+            <line x1="170" y1="148" x2="170" y2="192" stroke="currentColor" marker-end="url(#f2a)"/>
+
+            <text x="170" y="216" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="13" font-weight="600" style="fill:var(--fail)">Permission denied</text>
+            <text x="170" y="234" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" fill="currentColor" opacity="0.6">no account "appdev" on this host</text>
+
+            <!-- RIGHT -->
+            <rect x="440" y="34" width="220" height="46" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="550" y="53" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="12" fill="currentColor">RHEL7 script, as appdev</text>
+            <text x="550" y="69" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor" opacity="0.65">ssh rhel8-app01</text>
+
+            <line x1="550" y1="80" x2="550" y2="103" stroke="currentColor" marker-end="url(#f2a)"/>
+
+            <rect x="430" y="103" width="240" height="40" rx="5" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+            <text x="550" y="120" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" style="fill:var(--accent)">~/.ssh/config: Host rhel8-app01</text>
+            <text x="550" y="134" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" style="fill:var(--accent)">User svc_appdev</text>
+
+            <line x1="550" y1="143" x2="550" y2="176" stroke="currentColor" marker-end="url(#f2a)"/>
+
+            <rect x="440" y="176" width="220" height="38" rx="5" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="550" y="199" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor">rhel8-app01 sshd</text>
+
+            <line x1="550" y1="214" x2="550" y2="248" stroke="currentColor" marker-end="url(#f2a)"/>
+
+            <text x="550" y="270" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="13" font-weight="600" style="fill:var(--ok)">svc_appdev — logged in</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>The script's own command never changes. SSH rewrites the destination account before it connects, using a block this project keeps up to date on every account, on every host.</figcaption>
+    </figure>
+
+    <div class="callout">
+      <strong>Why it has to be at the top of the file:</strong> SSH uses the
+      first matching entry it finds for a given host. This project inserts
+      its block at the very top of <code>~/.ssh/config</code>, so nothing an
+      admin later appends below it — a stray <code>Host *</code> line, for
+      instance — can silently override the mapping.
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">4 — why it's not just one connection</p>
+    <h2>Every host has to trust several others, in both directions</h2>
+    <p>
+      It's not one script SSHing one other box. Any of the four new servers
+      may need to reach any of the other new servers, and, while both
+      platforms are live, any of the four old servers too — and vice versa.
+      The old servers' existing trust with each other is left exactly as it
+      is; this project only adds the paths that cross the platform boundary,
+      plus the RHEL8-to-RHEL8 paths RHEL8 needs among itself.
+    </p>
+
+    <figure>
+      <div class="fignum">FIG. 3</div>
+      <div class="diagram-frame">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 760 360" style="width:100%;min-width:640px" role="img"
+               aria-label="Four RHEL7 hosts and four RHEL8 hosts. RHEL7 to RHEL8 is 16 paths as appdev, RHEL8 to RHEL7 is 16 paths as svc_appdev, and RHEL8 to RHEL8 is 16 paths as svc_appdev, for 48 total. RHEL7 to RHEL7 trust already existed and is left untouched.">
+            <defs>
+              <marker id="f3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <!-- RHEL7 cluster -->
+            <rect x="40" y="46" width="220" height="270" rx="8" fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="5 4"/>
+            <text x="150" y="34" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12.5" fill="currentColor">RHEL7 — 4 hosts, appdev</text>
+
+            <rect x="65" y="66" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="150" y="87" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel7-app01</text>
+            <rect x="65" y="112" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="150" y="133" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel7-app02</text>
+            <rect x="65" y="158" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="150" y="179" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel7-app03</text>
+            <rect x="65" y="204" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="150" y="225" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel7-app04</text>
+
+            <text x="150" y="270" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.6">RHEL7 ↔ RHEL7 trust</text>
+            <text x="150" y="284" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.6">already existed — untouched</text>
+
+            <!-- RHEL8 cluster -->
+            <rect x="500" y="46" width="220" height="270" rx="8" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="610" y="34" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12.5" fill="currentColor">RHEL8 — 4 hosts, svc_appdev</text>
+
+            <rect x="525" y="66" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="610" y="87" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel8-app01</text>
+            <rect x="525" y="112" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="610" y="133" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel8-app02</text>
+            <rect x="525" y="158" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="610" y="179" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel8-app03</text>
+            <rect x="525" y="204" width="170" height="34" rx="4" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="610" y="225" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor">rhel8-app04</text>
+
+            <!-- self loop on RHEL8 -->
+            <path d="M 690 46 C 740 20, 740 -6, 690 6" fill="none" stroke="currentColor" marker-end="url(#f3a)"/>
+            <text x="742" y="18" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.7">16 paths</text>
+            <text x="742" y="31" font-family="'IBM Plex Sans',sans-serif" font-size="9.5" fill="currentColor" opacity="0.55">svc_appdev ↔ svc_appdev</text>
+
+            <!-- cross arrows -->
+            <line x1="264" y1="150" x2="496" y2="150" stroke="currentColor" marker-end="url(#f3a)"/>
+            <text x="380" y="140" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" fill="currentColor" opacity="0.75">16 paths — as appdev</text>
+
+            <line x1="496" y1="222" x2="264" y2="222" stroke="currentColor" marker-end="url(#f3a)"/>
+            <text x="380" y="240" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10.5" fill="currentColor" opacity="0.75">16 paths — as svc_appdev</text>
+
+            <text x="380" y="345" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11.5" fill="currentColor" opacity="0.7">16 + 16 + 16 = 48 paths, all checked by 30_verify_ssh.yml</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>Adding a ninth host, or rebuilding one, means every direction on this diagram gets rebuilt automatically in the next run — nobody hand-edits a config file to keep it correct.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <p class="eyebrow">5 — how it's actually built</p>
+    <h2>Two passes: collect everyone's keys, then write everyone's files</h2>
+    <p>
+      To build those address books, Ansible first has to know every account's
+      public key and every server's host key. So the run has two phases. The
+      first visits every host and reads what's already there. The second uses
+      what it just read to write the same three files — <code>authorized_keys</code>,
+      <code>known_hosts</code>, and <code>~/.ssh/config</code> — onto every
+      host, so they all agree.
+    </p>
+    <p>
+      The two platforms are read and written differently, because RHEL7 is
+      being retired: nothing new gets installed there, and the servers can't
+      even run Ansible's normal toolkit (it needs Python 3, which this old
+      RHEL7 setup doesn't offer to a current Ansible). So RHEL7 is handled
+      with a small bash script sent over as plain text; RHEL8 gets Ansible's
+      usual, fully managed approach. Both sides render the exact same
+      template, so the files always agree in content even though they're
+      written by different means.
+    </p>
+
+    <figure>
+      <div class="fignum">FIG. 4</div>
+      <div class="diagram-frame">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 760 340" style="width:100%;min-width:640px" role="img"
+               aria-label="Collect phase: an RHEL8 host reads its own keys with a Python module, and an RHEL7 host reads its own keys with a raw bash script; both feed an in-memory manifest. Apply phase: the manifest is rendered into the same template, then written to the RHEL8 host with the blockinfile module and to the RHEL7 host with the same bash script.">
+            <defs>
+              <marker id="f4a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+              </marker>
+            </defs>
+
+            <text x="40" y="16" font-family="'IBM Plex Mono',monospace" font-size="11" letter-spacing="0.04em" fill="currentColor" opacity="0.55">1 COLLECT</text>
+            <text x="40" y="246" font-family="'IBM Plex Mono',monospace" font-size="11" letter-spacing="0.04em" fill="currentColor" opacity="0.55">2 APPLY</text>
+
+            <!-- sources -->
+            <rect x="40" y="24" width="280" height="56" rx="6" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="180" y="47" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" fill="currentColor">RHEL8 host</text>
+            <text x="180" y="64" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.65">Python module reads its own keys</text>
+
+            <rect x="440" y="24" width="280" height="56" rx="6" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="580" y="47" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" fill="currentColor">RHEL7 host</text>
+            <text x="580" y="64" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.65">raw bash script reads its own keys, no Python</text>
+
+            <line x1="200" y1="80" x2="330" y2="128" stroke="currentColor" marker-end="url(#f4a)"/>
+            <line x1="560" y1="80" x2="430" y2="128" stroke="currentColor" marker-end="url(#f4a)"/>
+
+            <!-- manifest -->
+            <rect x="280" y="128" width="200" height="56" rx="6" style="fill:var(--accent-soft);stroke:var(--accent)"/>
+            <text x="380" y="151" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" style="fill:var(--accent)">this run's manifest</text>
+            <text x="380" y="167" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="9.5" style="fill:var(--accent)">key + host key + address, per host</text>
+
+            <line x1="380" y1="184" x2="380" y2="214" stroke="currentColor" marker-end="url(#f4a)"/>
+            <line x1="380" y1="214" x2="200" y2="250" stroke="currentColor" marker-end="url(#f4a)"/>
+            <line x1="380" y1="214" x2="560" y2="250" stroke="currentColor" marker-end="url(#f4a)"/>
+
+            <!-- writes -->
+            <rect x="40" y="250" width="280" height="56" rx="6" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="180" y="273" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" fill="currentColor">RHEL8 host</text>
+            <text x="180" y="290" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.65">blockinfile module writes the block</text>
+
+            <rect x="440" y="250" width="280" height="56" rx="6" fill="none" stroke="currentColor" stroke-opacity="0.55"/>
+            <text x="580" y="273" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="12" fill="currentColor">RHEL7 host</text>
+            <text x="580" y="290" text-anchor="middle" font-family="'IBM Plex Sans',sans-serif" font-size="10" fill="currentColor" opacity="0.65">same bash script writes the block</text>
+
+            <text x="380" y="330" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10.5" fill="currentColor" opacity="0.65">both write: # BEGIN/END ANSIBLE MANAGED — same template, either side</text>
+          </svg>
+        </div>
+      </div>
+      <figcaption>The write step never touches the rest of the file — only the text between its own markers. Anything an admin added by hand outside that block is left exactly as it was.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <p class="eyebrow">6 — guardrails</p>
+    <h2>What keeps this safe to rerun</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="t">Marked blocks only</div>
+        <div class="d">Every edit sits between its own <code>BEGIN/END</code> markers. Nothing outside that block is ever touched or reformatted.</div>
+      </div>
+      <div class="card">
+        <div class="t">Keys are never replaced</div>
+        <div class="d">A key is generated only if an account has none at all. An existing key, however old, is reused as-is.</div>
+      </div>
+      <div class="card">
+        <div class="t">Host identity is verified</div>
+        <div class="d">Real host keys are collected and checked on every connection — no "trust the first time you see it" shortcut, anywhere.</div>
+      </div>
+      <div class="card">
+        <div class="t">Keys are source-locked</div>
+        <div class="d">Each authorized key is restricted to the IP address of the host it belongs to, so a copied key is useless from anywhere else.</div>
+      </div>
+      <div class="card">
+        <div class="t">All or nothing</div>
+        <div class="d">If even one host in the mesh can't be reached, the run stops before writing anything — never a half-updated set of trust files.</div>
+      </div>
+      <div class="card">
+        <div class="t">Turning it off is one setting</div>
+        <div class="d">Once the app has fully moved, flipping <code>rhel7_in_mesh: false</code> re-renders RHEL8's files without RHEL7 — even if those old servers are already off.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin-bottom:6px">Full rationale for each decision: <code>docs/DESIGN.md</code>. Step-by-step operating procedures: <code>docs/RUNBOOK.md</code>. Quick start and troubleshooting: <code>README.md</code>.</p>
+  </footer>
+
+</div>
+</body>
+</html>
